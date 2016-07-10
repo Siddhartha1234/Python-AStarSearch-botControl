@@ -1,0 +1,284 @@
+	
+from heapq import heappush, heappop 
+import math
+import time
+import random
+import xlrd
+import serial
+
+file_location = "/media/sidd/UBUNTU 14_0/-_-.xls"
+workbook = xlrd.open_workbook(file_location)
+sheet = workbook.sheet_by_index(0)
+data = [[sheet.cell_value(r,c) for c in range(sheet.ncols)] for r in range (sheet.nrows)]
+
+import RPi.GPIO as gpio
+
+import time 
+gpio.setwarnings(False)
+gpio.setmode(gpio.BOARD)
+gpio.setup(7,gpio.OUT)
+gpio.setup(11,gpio.OUT)
+gpio.setup(13,gpio.OUT)
+gpio.setup(15,gpio.OUT)
+
+
+
+
+class node:
+    xPos = 0 
+    yPos = 0 
+    distance = 0 
+    priority = 0 
+    def __init__(self, xPos, yPos, distance, priority):
+        self.xPos = xPos
+        self.yPos = yPos
+        self.distance = distance
+        self.priority = priority
+    def __lt__(self, other):
+        return self.priority < other.priority
+    def updatePriority(self, xDest, yDest):
+        self.priority = self.distance + self.estimate(xDest, yDest) * 10
+    
+    def nextMove(self, dirs, d): 
+        if dirs == 8 and d % 2 != 0:
+            self.distance += 99999
+        else:
+            self.distance += 10
+   
+    def estimate(self, xDest, yDest):
+        xd = xDest - self.xPos
+        yd = yDest - self.yPos
+       
+        d = (xd + yd)
+    
+        return(d)
+
+def pathFind(the_map, n, m, dirs, dx, dy, xA, yA, xB, yB):
+    closed_nodes_map = [] 
+    open_nodes_map = [] 
+    dir_map = [] 
+    row = [0] * n
+    for i in range(m):
+        closed_nodes_map.append(list(row))
+        open_nodes_map.append(list(row))
+        dir_map.append(list(row))
+
+    pq = [[], []]
+    pqi = 0 
+    n0 = node(xA, yA, 0, 0)
+    n0.updatePriority(xB, yB)
+    heappush(pq[pqi], n0)
+    open_nodes_map[yA][xA] = n0.priority 
+
+    while len(pq[pqi]) > 0:
+        
+        n1 = pq[pqi][0] 
+        n0 = node(n1.xPos, n1.yPos, n1.distance, n1.priority)
+        x = n0.xPos
+        y = n0.yPos
+        heappop(pq[pqi]) 
+        open_nodes_map[y][x] = 0
+        closed_nodes_map[y][x] = 1 
+
+        
+        if x == xB and y == yB:
+            
+            path = ''
+            while not (x == xA and y == yA):
+                j = dir_map[y][x]
+                c = str((j + dirs / 2) % dirs)
+                path = c + path
+                x += dx[j]
+                y += dy[j]
+            return path
+
+        for i in range(dirs):
+            xdx = x + dx[i]
+            ydy = y + dy[i]
+            if not (xdx < 0 or xdx > n-1 or ydy < 0 or ydy > m - 1
+                    or the_map[ydy][xdx] == 1 or closed_nodes_map[ydy][xdx] == 1):
+                
+                m0 = node(xdx, ydy, n0.distance, n0.priority)
+                m0.nextMove(dirs, i)
+                m0.updatePriority(xB, yB)
+               
+                if open_nodes_map[ydy][xdx] == 0:
+                    open_nodes_map[ydy][xdx] = m0.priority
+                    heappush(pq[pqi], m0)
+                    
+                    dir_map[ydy][xdx] = (i + dirs / 2) % dirs
+                elif open_nodes_map[ydy][xdx] > m0.priority:
+                    
+                    open_nodes_map[ydy][xdx] = m0.priority
+                   
+                    dir_map[ydy][xdx] = (i + dirs / 2) % dirs
+                    
+                    while not (pq[pqi][0].xPos == xdx and pq[pqi][0].yPos == ydy):
+                        heappush(pq[1 - pqi], pq[pqi][0])
+                        heappop(pq[pqi])
+                    heappop(pq[pqi])
+                    if len(pq[pqi]) > len(pq[1 - pqi]):
+                        pqi = 1 - pqi
+                    while len(pq[pqi]) > 0:
+                        heappush(pq[1-pqi], pq[pqi][0])
+                        heappop(pq[pqi])       
+                    pqi = 1 - pqi
+                    heappush(pq[pqi], m0) 
+    return '' 
+
+
+the_map=[]
+
+dirs = 4
+if dirs == 4:
+    dx = [1, 0, -1, 0]
+    dy = [0, 1, 0, -1]
+elif dirs == 8:
+    dx = [1, 1, 0, -1, -1, -1, 0, 1]
+    dy = [0, 1, 1, 1, 0, -1, -1, -1]
+
+l=0
+n=1
+while(data[n][7]==0):
+    if(data[n][6]>l and (data[n][2]==90 or data[n][2]==270)):l=data[n][6]
+    n=n+1
+for m in range(n):
+    if(data[m][6]==l and (data[n][2]==90 or data[n][2]==270)):break
+height = int(l)
+print height
+width = int(abs(data[sheet.nrows-1][7]))
+print width
+row = [0] * width
+for i in range(height): # create empty map
+    the_map.append(list(row))
+
+
+for i in range (1,sheet.nrows):
+    if(i==m):continue
+    if ( data[i][2]==90 or data [i][2]==270):
+            for j in range (int(data[i][7])+1,width):
+                for k in range (int(min(data[i][4],data[i][8])),int(max(data[i][4],data[i][8]))):
+                    #self.cells[int((j-1)*l+k)].reachable=not self.cells[int((j-1)*l+k)].reachable
+                   if the_map[k][j-1] ==1 :
+                           the_map[k][j-1] =0
+                   else  :
+                           the_map[k][j-1] =1
+
+dictionary={'Entrance' : (356,0) , 'LH1': (217,320) ,'LH2' :(407,320) ,'ISAC ROOM' :(613,320) ,'LIFTS':(799,362) ,'STAIRCASE1(near lifts)' : (751,362) ,'STAIRCASE2' : (71,356) ,'GENTS WASHROOM':( 61,352) ,'LADIES WASHROOM':(766,362),'DESIGN DEPT.' : (530,65) ,'SECURITY+STORE' :(815,223) ,'INST TEM+CHEM ENG' :(65,314),'EXIT(TOWARDS BUS STOP)':(71,360) }
+
+while True:
+    accept_list=[]
+
+    while (len(accept_list) <= 2):
+        ser=serial.Serial("/dev/ttyAMA0" ,9600)
+        accept_list.append(ser.readline)
+
+    (xA,yA)=dictionary.get(accept_list[0])
+    (xB,yB)=dictionary.get(accept_list[1])
+
+    print 'Map size (X,Y): ', width , height
+    print 'Start: ', xA, yA
+    print 'Finish: ', xB, yB
+    t = time.time()
+    route = pathFind(the_map, width, height, dirs, dx, dy, xA, yA, xB, yB)
+    print 'Time to generate the route (seconds): ', time.time() - t
+    print 'Route:'
+    print route
+
+    # mark the route on the map
+    if len(route) > 0:
+        x = xA
+        y = yA
+        the_map[y][x] = 2
+        dirn='n'
+        for i in range(len(route)):
+            j = int(route[i])
+            x += dx[j]
+            y += dy[j]
+            the_map[y][x] = 3
+            
+	    if(dirn=='n'):
+		if (condn1):
+			forward()
+			dirn='n'
+		elif(condn2):
+			backward()
+			dirn='n'
+		elif(condn3):
+			right()
+			dirn='e'
+		else:
+			left()
+			dirn='w'
+	    elif(dirn='w'):
+		if(condn1):
+			right()
+			dirn='n'
+		elif(condn2):
+			left()
+			dirn='s'
+		elif(condn3):
+			backward()
+			dirn='w'
+		else:
+			forward()
+			dirn='w'
+
+	    elif(dirn=='e'):
+		if(condn1):
+			left()
+			dirn='n'
+		elif(cond2):
+			right()
+			dirn='s'
+		elif(cond3):
+			forward()
+			dirn='e'
+		else:
+			backward()
+			dirn='e'
+	else:
+		if(cond1):
+			backward()
+			dirn='s'
+		elif(cond2):
+			forward()
+			dirn='s'
+		elif(cond3):
+			left()
+			dirn='e'
+		else:
+			right()
+			dirn='w'
+
+	   
+
+
+	    
+         the_map[y][x] = 4
+
+    # display the map with the route added
+   ''' if(len(route) > 0):
+        print 'Map:'
+        for y in reversed( range(height)):
+            for x in  (range(width)):
+                xy = the_map[y][x]
+                if xy == 0:
+                    print '.', # space
+                elif xy == 1:
+                    print 'O', # obstacle
+                elif xy == 2:
+                    print 'S', # start
+                elif xy == 3:
+                    print 'R', # route
+                elif xy == 4:
+                    print 'F', # finish
+            print
+    else :
+        print "THAT'S A WALL BITCH!"
+    raw_input('Press Enter...')
+
+'''
+
+
+
